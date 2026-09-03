@@ -1,7 +1,3 @@
-%=====================================================================================
-% CHESS GAME - Full Chess with Check and Checkmate!
-%=====================================================================================
-
 function chess_game()
     % Create main figure
     fig = figure('Name','MATLAB Chess','NumberTitle','off','Color',[0.2 0.2 0.2],...
@@ -54,11 +50,7 @@ function chess_game()
         end
     end
     
-    %=================================================================================
-    % DRAW BOARD
-    %=================================================================================
     function drawBoard()
-        % Clear previous pieces
         children = findobj(gcf, 'Type', 'patch');
         delete(children);
         children = findobj(gcf, 'Type', 'text');
@@ -68,25 +60,21 @@ function chess_game()
             end
         end
         
-        % Draw squares and pieces
         for row = 1:8
             for col = 1:8
                 x = boardOffset + (col-1)*squareSize;
                 y = boardOffset + (8-row)*squareSize;
                 
-                % Square color
                 if mod(row+col, 2) == 0
                     color = [0.8 0.6 0.4];
                 else
                     color = [0.4 0.2 0.1];
                 end
                 
-                % Highlight selected square
                 if ~isempty(selectedSquare) && selectedSquare(1) == row && selectedSquare(2) == col
                     color = [1 1 0.5];
                 end
                 
-                % Highlight king in check
                 if inCheck && ~isempty(board{row,col}) && strcmp(board{row,col}{2}, 'king') && ...
                    strcmp(board{row,col}{1}, currentPlayer)
                     color = [1 0.3 0.3];
@@ -96,7 +84,6 @@ function chess_game()
                       color, 'EdgeColor', [0.2 0.2 0.2], 'LineWidth', 1, ...
                       'UserData', [row, col]);
                 
-                % Draw piece
                 if ~isempty(board{row,col})
                     piece = board{row,col};
                     pieceColor = piece{1};
@@ -118,7 +105,6 @@ function chess_game()
             end
         end
         
-        % Update status
         if gameOver
             if inCheck
                 status = 'Checkmate! ';
@@ -141,7 +127,6 @@ function chess_game()
             set(statusHandle, 'String', status);
         end
         
-        % Coordinates
         for i = 1:8
             text(10, boardOffset + (8-i)*squareSize + squareSize/2, num2str(i), ...
                  'FontSize', 12, 'FontWeight', 'bold', 'Color', [1 1 1]);
@@ -150,9 +135,6 @@ function chess_game()
         end
     end
     
-    %=================================================================================
-    % GET PIECE SYMBOL
-    %=================================================================================
     function symbol = getPieceSymbol(color, type)
         symbols = struct();
         symbols.white = struct('king', '♔', 'queen', '♕', 'rook', '♖', ...
@@ -167,9 +149,6 @@ function chess_game()
         end
     end
     
-    %=================================================================================
-    % FIND KING POSITION
-    %=================================================================================
     function [kingRow, kingCol] = findKing(board, color)
         kingRow = 0;
         kingCol = 0;
@@ -185,17 +164,11 @@ function chess_game()
         end
     end
     
-    %=================================================================================
-    % IS SQUARE UNDER ATTACK
-    %=================================================================================
     function attacked = isSquareAttacked(board, row, col, byColor)
-        % Check if a square is attacked by any piece of 'byColor'
         attacked = false;
-        
         for r = 1:8
             for c = 1:8
                 if ~isempty(board{r,c}) && strcmp(board{r,c}{1}, byColor)
-                    % Check if this piece can attack (row,col)
                     if isValidMoveBasic(board, r, c, row, col)
                         attacked = true;
                         return;
@@ -205,12 +178,8 @@ function chess_game()
         end
     end
     
-    %=================================================================================
-    % BASIC MOVE VALIDATION (no check validation)
-    %=================================================================================
     function valid = isValidMoveBasic(board, fromRow, fromCol, toRow, toCol)
         valid = false;
-        
         if fromRow == toRow && fromCol == toCol
             return;
         end
@@ -282,9 +251,6 @@ function chess_game()
         end
     end
     
-    %=================================================================================
-    % CHECK PATH CLEAR
-    %=================================================================================
     function clear = isPathClear(board, fromRow, fromCol, toRow, toCol)
         clear = true;
         dRow = sign(toRow - fromRow);
@@ -302,9 +268,6 @@ function chess_game()
         end
     end
     
-    %=================================================================================
-    % CHECK CASTLING
-    %=================================================================================
     function valid = isCastlingValid(board, fromRow, fromCol, toCol)
         valid = false;
         if fromCol ~= 5
@@ -326,29 +289,21 @@ function chess_game()
         end
     end
     
-    %=================================================================================
-    % FULL MOVE VALIDATION (with check validation)
-    %=================================================================================
     function valid = isValidMoveFull(board, fromRow, fromCol, toRow, toCol, color)
         valid = false;
-        
-        % Check if move is legal ignoring check
         if ~isValidMoveBasic(board, fromRow, fromCol, toRow, toCol)
             return;
         end
         
-        % Make a temporary board and simulate the move
         tempBoard = board;
         tempBoard{toRow, toCol} = tempBoard{fromRow, fromCol};
         tempBoard{fromRow, fromCol} = {};
         
-        % Find king position
         [kingRow, kingCol] = findKing(tempBoard, color);
         if kingRow == 0
             return;
         end
         
-        % Check if king is in check after the move
         opponent = 'black';
         if strcmp(color, 'white')
             opponent = 'black';
@@ -361,16 +316,11 @@ function chess_game()
         end
     end
     
-    %=================================================================================
-    % CHECK IF PLAYER HAS LEGAL MOVES
-    %=================================================================================
     function hasMoves = hasLegalMoves(board, color)
         hasMoves = false;
-        
         for r = 1:8
             for c = 1:8
                 if ~isempty(board{r,c}) && strcmp(board{r,c}{1}, color)
-                    % Try all possible destinations
                     for tr = 1:8
                         for tc = 1:8
                             if isValidMoveFull(board, r, c, tr, tc, color)
@@ -384,14 +334,8 @@ function chess_game()
         end
     end
     
-    %=================================================================================
-    % CHECK GAME STATE (Check, Checkmate, Stalemate)
-    %=================================================================================
     function checkGameState()
-        % Find current player's king
         [kingRow, kingCol] = findKing(board, currentPlayer);
-        
-        % Determine opponent
         opponent = 'black';
         if strcmp(currentPlayer, 'white')
             opponent = 'black';
@@ -399,34 +343,20 @@ function chess_game()
             opponent = 'white';
         end
         
-        % Check if king is in check
         inCheck = isSquareAttacked(board, kingRow, kingCol, opponent);
-        
-        % Check if player has legal moves
         hasLegal = hasLegalMoves(board, currentPlayer);
         
         if ~hasLegal
             gameOver = true;
-            if inCheck
-                % Checkmate!
-                drawBoard();
-                return;
-            else
-                % Stalemate!
-                drawBoard();
-                return;
-            end
+            drawBoard();
+            return;
         end
         
-        % If in check but has legal moves, just highlight it
         if inCheck
             drawBoard();
         end
     end
     
-    %=================================================================================
-    % BOARD CLICK
-    %=================================================================================
     function boardClick(~, ~)
         if gameOver
             return;
@@ -448,9 +378,6 @@ function chess_game()
         end
     end
     
-    %=================================================================================
-    % PROCESS CLICK
-    %=================================================================================
     function processClick(pos)
         if gameOver
             return;
@@ -460,7 +387,6 @@ function chess_game()
         col = pos(2);
         
         if isempty(selectedSquare)
-            % Select a piece if it belongs to current player
             if ~isempty(board{row, col}) && strcmp(board{row,col}{1}, currentPlayer)
                 selectedSquare = [row, col];
                 drawBoard();
@@ -469,31 +395,25 @@ function chess_game()
             fromRow = selectedSquare(1);
             fromCol = selectedSquare(2);
             
-            % If clicking on own piece, re-select
             if ~isempty(board{row, col}) && strcmp(board{row,col}{1}, currentPlayer)
                 selectedSquare = [row, col];
                 drawBoard();
                 return;
             end
             
-            % Attempt move with full validation (including check)
             if isValidMoveFull(board, fromRow, fromCol, row, col, currentPlayer)
-                % Make the move
                 piece = board{fromRow, fromCol};
                 captured = board{row, col};
                 
                 board{row, col} = piece;
                 board{fromRow, fromCol} = {};
                 
-                % Store move in history
                 moveHistory{end+1} = {[fromRow, fromCol], [row, col], piece, captured};
                 
-                % Check for pawn promotion
                 if strcmp(piece{2}, 'pawn') && (row == 1 || row == 8)
                     promotePawn(row, col);
                 end
                 
-                % Switch player
                 if strcmp(currentPlayer, 'white')
                     currentPlayer = 'black';
                 else
@@ -501,21 +421,15 @@ function chess_game()
                 end
                 
                 selectedSquare = [];
-                
-                % Check game state
                 checkGameState();
                 drawBoard();
             else
-                % Invalid move
                 selectedSquare = [];
                 drawBoard();
             end
         end
     end
     
-    %=================================================================================
-    % PAWN PROMOTION
-    %=================================================================================
     function promotePawn(row, col)
         dlg = figure('Name','Promotion','NumberTitle','off','Position',[400 300 300 200],...
                      'MenuBar','none','ToolBar','none','Color',[0.2 0.2 0.2]);
@@ -542,9 +456,6 @@ function chess_game()
         end
     end
     
-    %=================================================================================
-    % NEW GAME
-    %=================================================================================
     function newGame(~, ~)
         board = initializeBoard();
         selectedSquare = [];
@@ -555,9 +466,6 @@ function chess_game()
         drawBoard();
     end
     
-    %=================================================================================
-    % UNDO MOVE
-    %=================================================================================
     function undoMove(~, ~)
         if isempty(moveHistory)
             return;
