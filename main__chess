@@ -1,0 +1,587 @@
+%=====================================================================================
+% CHESS GAME - Full Chess with Check and Checkmate!
+%=====================================================================================
+
+function chess_game()
+    % Create main figure
+    fig = figure('Name','MATLAB Chess','NumberTitle','off','Color',[0.2 0.2 0.2],...
+                 'Position',[100 100 560 620],'MenuBar','none','ToolBar','none');
+    
+    % Board parameters
+    squareSize = 60;
+    boardOffset = 30;
+    
+    % Initialize game state
+    board = initializeBoard();
+    selectedSquare = [];
+    currentPlayer = 'white';
+    gameOver = false;
+    moveHistory = {};
+    inCheck = false;
+    
+    % Draw the board
+    drawBoard();
+    
+    % Status text
+    uicontrol('Style','text','String','White to move','Position',[130 10 300 30],...
+              'FontSize',14,'FontWeight','bold','BackgroundColor',[0.2 0.2 0.2],...
+              'ForegroundColor',[1 1 1],'Tag','status');
+    
+    % Buttons
+    uicontrol('Style','pushbutton','String','New Game','Position',[10 10 100 30],...
+              'FontSize',12,'FontWeight','bold','Callback',@newGame);
+              
+    uicontrol('Style','pushbutton','String','Undo','Position',[440 10 100 30],...
+              'FontSize',12,'FontWeight','bold','Callback',@undoMove);
+    
+    % Set up mouse click callback
+    set(fig, 'WindowButtonDownFcn', @boardClick);
+    
+    %=================================================================================
+    % NESTED FUNCTIONS
+    %=================================================================================
+    
+    function board = initializeBoard()
+        board = cell(8,8);
+        backRow = {'rook','knight','bishop','queen','king','bishop','knight','rook'};
+        for col = 1:8
+            board{1,col} = {'black', backRow{col}};
+            board{2,col} = {'black', 'pawn'};
+        end
+        for col = 1:8
+            board{7,col} = {'white', 'pawn'};
+            board{8,col} = {'white', backRow{col}};
+        end
+    end
+    
+    %=================================================================================
+    % DRAW BOARD
+    %=================================================================================
+    function drawBoard()
+        % Clear previous pieces
+        children = findobj(gcf, 'Type', 'patch');
+        delete(children);
+        children = findobj(gcf, 'Type', 'text');
+        for child = children'
+            if ~isempty(get(child, 'UserData'))
+                delete(child);
+            end
+        end
+        
+        % Draw squares and pieces
+        for row = 1:8
+            for col = 1:8
+                x = boardOffset + (col-1)*squareSize;
+                y = boardOffset + (8-row)*squareSize;
+                
+                % Square color
+                if mod(row+col, 2) == 0
+                    color = [0.8 0.6 0.4];
+                else
+                    color = [0.4 0.2 0.1];
+                end
+                
+                % Highlight selected square
+                if ~isempty(selectedSquare) && selectedSquare(1) == row && selectedSquare(2) == col
+                    color = [1 1 0.5];
+                end
+                
+                % Highlight king in check
+                if inCheck && ~isempty(board{row,col}) && strcmp(board{row,col}{2}, 'king') && ...
+                   strcmp(board{row,col}{1}, currentPlayer)
+                    color = [1 0.3 0.3];
+                end
+                
+                patch([x, x+squareSize, x+squareSize, x], [y, y, y+squareSize, y+squareSize],...
+                      color, 'EdgeColor', [0.2 0.2 0.2], 'LineWidth', 1, ...
+                      'UserData', [row, col]);
+                
+                % Draw piece
+                if ~isempty(board{row,col})
+                    piece = board{row,col};
+                    pieceColor = piece{1};
+                    pieceType = piece{2};
+                    
+                    symbols = getPieceSymbol(pieceColor, pieceType);
+                    
+                    if strcmp(pieceColor, 'white')
+                        textColor = [1 1 1];
+                    else
+                        textColor = [0 0 0];
+                    end
+                    
+                    text(x + squareSize/2, y + squareSize/2, symbols, ...
+                         'FontSize', 40, 'FontWeight', 'bold', ...
+                         'HorizontalAlignment', 'center', 'VerticalAlignment', 'middle', ...
+                         'Color', textColor, 'UserData', [row, col]);
+                end
+            end
+        end
+        
+        % Update status
+        if gameOver
+            if inCheck
+                status = 'Checkmate! ';
+                if strcmp(currentPlayer, 'white')
+                    status = [status 'Black wins!'];
+                else
+                    status = [status 'White wins!'];
+                end
+            else
+                status = 'Stalemate! Draw!';
+            end
+        else
+            status = [upper(currentPlayer(1)) currentPlayer(2:end) ' to move'];
+            if inCheck
+                status = [status ' - CHECK!'];
+            end
+        end
+        statusHandle = findobj('Tag', 'status');
+        if ~isempty(statusHandle)
+            set(statusHandle, 'String', status);
+        end
+        
+        % Coordinates
+        for i = 1:8
+            text(10, boardOffset + (8-i)*squareSize + squareSize/2, num2str(i), ...
+                 'FontSize', 12, 'FontWeight', 'bold', 'Color', [1 1 1]);
+            text(boardOffset + (i-1)*squareSize + squareSize/2, boardOffset + 8*squareSize + 20, ...
+                 char('a'+i-1), 'FontSize', 12, 'FontWeight', 'bold', 'Color', [1 1 1]);
+        end
+    end
+    
+    %=================================================================================
+    % GET PIECE SYMBOL
+    %=================================================================================
+    function symbol = getPieceSymbol(color, type)
+        symbols = struct();
+        symbols.white = struct('king', '♔', 'queen', '♕', 'rook', '♖', ...
+                              'bishop', '♗', 'knight', '♘', 'pawn', '♙');
+        symbols.black = struct('king', '♚', 'queen', '♛', 'rook', '♜', ...
+                              'bishop', '♝', 'knight', '♞', 'pawn', '♟');
+        
+        if strcmp(color, 'white')
+            symbol = symbols.white.(type);
+        else
+            symbol = symbols.black.(type);
+        end
+    end
+    
+    %=================================================================================
+    % FIND KING POSITION
+    %=================================================================================
+    function [kingRow, kingCol] = findKing(board, color)
+        kingRow = 0;
+        kingCol = 0;
+        for r = 1:8
+            for c = 1:8
+                if ~isempty(board{r,c}) && strcmp(board{r,c}{1}, color) && ...
+                   strcmp(board{r,c}{2}, 'king')
+                    kingRow = r;
+                    kingCol = c;
+                    return;
+                end
+            end
+        end
+    end
+    
+    %=================================================================================
+    % IS SQUARE UNDER ATTACK
+    %=================================================================================
+    function attacked = isSquareAttacked(board, row, col, byColor)
+        % Check if a square is attacked by any piece of 'byColor'
+        attacked = false;
+        
+        for r = 1:8
+            for c = 1:8
+                if ~isempty(board{r,c}) && strcmp(board{r,c}{1}, byColor)
+                    % Check if this piece can attack (row,col)
+                    if isValidMoveBasic(board, r, c, row, col)
+                        attacked = true;
+                        return;
+                    end
+                end
+            end
+        end
+    end
+    
+    %=================================================================================
+    % BASIC MOVE VALIDATION (no check validation)
+    %=================================================================================
+    function valid = isValidMoveBasic(board, fromRow, fromCol, toRow, toCol)
+        valid = false;
+        
+        if fromRow == toRow && fromCol == toCol
+            return;
+        end
+        
+        piece = board{fromRow, fromCol};
+        if isempty(piece)
+            return;
+        end
+        
+        color = piece{1};
+        type = piece{2};
+        
+        if ~isempty(board{toRow, toCol}) && strcmp(board{toRow,toCol}{1}, color)
+            return;
+        end
+        
+        dRow = toRow - fromRow;
+        dCol = toCol - fromCol;
+        
+        switch type
+            case 'pawn'
+                if strcmp(color, 'white')
+                    if dCol == 0 && dRow == -1 && isempty(board{toRow, toCol})
+                        valid = true;
+                    elseif dCol == 0 && dRow == -2 && fromRow == 7 && ...
+                           isempty(board{toRow, toCol}) && isempty(board{fromRow-1, fromCol})
+                        valid = true;
+                    elseif abs(dCol) == 1 && dRow == -1 && ~isempty(board{toRow, toCol})
+                        valid = true;
+                    end
+                else
+                    if dCol == 0 && dRow == 1 && isempty(board{toRow, toCol})
+                        valid = true;
+                    elseif dCol == 0 && dRow == 2 && fromRow == 2 && ...
+                           isempty(board{toRow, toCol}) && isempty(board{fromRow+1, fromCol})
+                        valid = true;
+                    elseif abs(dCol) == 1 && dRow == 1 && ~isempty(board{toRow, toCol})
+                        valid = true;
+                    end
+                end
+                
+            case 'knight'
+                if (abs(dRow) == 2 && abs(dCol) == 1) || (abs(dRow) == 1 && abs(dCol) == 2)
+                    valid = true;
+                end
+                
+            case 'bishop'
+                if abs(dRow) == abs(dCol) && isPathClear(board, fromRow, fromCol, toRow, toCol)
+                    valid = true;
+                end
+                
+            case 'rook'
+                if (dRow == 0 || dCol == 0) && isPathClear(board, fromRow, fromCol, toRow, toCol)
+                    valid = true;
+                end
+                
+            case 'queen'
+                if (abs(dRow) == abs(dCol) || dRow == 0 || dCol == 0) && ...
+                   isPathClear(board, fromRow, fromCol, toRow, toCol)
+                    valid = true;
+                end
+                
+            case 'king'
+                if max(abs(dRow), abs(dCol)) == 1
+                    valid = true;
+                elseif abs(dCol) == 2 && dRow == 0 && isCastlingValid(board, fromRow, fromCol, toCol)
+                    valid = true;
+                end
+        end
+    end
+    
+    %=================================================================================
+    % CHECK PATH CLEAR
+    %=================================================================================
+    function clear = isPathClear(board, fromRow, fromCol, toRow, toCol)
+        clear = true;
+        dRow = sign(toRow - fromRow);
+        dCol = sign(toCol - fromCol);
+        row = fromRow + dRow;
+        col = fromCol + dCol;
+        
+        while row ~= toRow || col ~= toCol
+            if ~isempty(board{row, col})
+                clear = false;
+                return;
+            end
+            row = row + dRow;
+            col = col + dCol;
+        end
+    end
+    
+    %=================================================================================
+    % CHECK CASTLING
+    %=================================================================================
+    function valid = isCastlingValid(board, fromRow, fromCol, toCol)
+        valid = false;
+        if fromCol ~= 5
+            return;
+        end
+        
+        if toCol == 7
+            if ~isempty(board{fromRow, 8}) && strcmp(board{fromRow,8}{2}, 'rook')
+                if isPathClear(board, fromRow, 5, fromRow, 8)
+                    valid = true;
+                end
+            end
+        elseif toCol == 3
+            if ~isempty(board{fromRow, 1}) && strcmp(board{fromRow,1}{2}, 'rook')
+                if isPathClear(board, fromRow, 5, fromRow, 1)
+                    valid = true;
+                end
+            end
+        end
+    end
+    
+    %=================================================================================
+    % FULL MOVE VALIDATION (with check validation)
+    %=================================================================================
+    function valid = isValidMoveFull(board, fromRow, fromCol, toRow, toCol, color)
+        valid = false;
+        
+        % Check if move is legal ignoring check
+        if ~isValidMoveBasic(board, fromRow, fromCol, toRow, toCol)
+            return;
+        end
+        
+        % Make a temporary board and simulate the move
+        tempBoard = board;
+        tempBoard{toRow, toCol} = tempBoard{fromRow, fromCol};
+        tempBoard{fromRow, fromCol} = {};
+        
+        % Find king position
+        [kingRow, kingCol] = findKing(tempBoard, color);
+        if kingRow == 0
+            return;
+        end
+        
+        % Check if king is in check after the move
+        opponent = 'black';
+        if strcmp(color, 'white')
+            opponent = 'black';
+        else
+            opponent = 'white';
+        end
+        
+        if ~isSquareAttacked(tempBoard, kingRow, kingCol, opponent)
+            valid = true;
+        end
+    end
+    
+    %=================================================================================
+    % CHECK IF PLAYER HAS LEGAL MOVES
+    %=================================================================================
+    function hasMoves = hasLegalMoves(board, color)
+        hasMoves = false;
+        
+        for r = 1:8
+            for c = 1:8
+                if ~isempty(board{r,c}) && strcmp(board{r,c}{1}, color)
+                    % Try all possible destinations
+                    for tr = 1:8
+                        for tc = 1:8
+                            if isValidMoveFull(board, r, c, tr, tc, color)
+                                hasMoves = true;
+                                return;
+                            end
+                        end
+                    end
+                end
+            end
+        end
+    end
+    
+    %=================================================================================
+    % CHECK GAME STATE (Check, Checkmate, Stalemate)
+    %=================================================================================
+    function checkGameState()
+        % Find current player's king
+        [kingRow, kingCol] = findKing(board, currentPlayer);
+        
+        % Determine opponent
+        opponent = 'black';
+        if strcmp(currentPlayer, 'white')
+            opponent = 'black';
+        else
+            opponent = 'white';
+        end
+        
+        % Check if king is in check
+        inCheck = isSquareAttacked(board, kingRow, kingCol, opponent);
+        
+        % Check if player has legal moves
+        hasLegal = hasLegalMoves(board, currentPlayer);
+        
+        if ~hasLegal
+            gameOver = true;
+            if inCheck
+                % Checkmate!
+                drawBoard();
+                return;
+            else
+                % Stalemate!
+                drawBoard();
+                return;
+            end
+        end
+        
+        % If in check but has legal moves, just highlight it
+        if inCheck
+            drawBoard();
+        end
+    end
+    
+    %=================================================================================
+    % BOARD CLICK
+    %=================================================================================
+    function boardClick(~, ~)
+        if gameOver
+            return;
+        end
+        
+        clickPoint = get(gca, 'CurrentPoint');
+        if isempty(clickPoint)
+            return;
+        end
+        
+        x = clickPoint(1,1);
+        y = clickPoint(1,2);
+        
+        col = floor((x - boardOffset) / squareSize) + 1;
+        row = 8 - floor((y - boardOffset) / squareSize);
+        
+        if row >= 1 && row <= 8 && col >= 1 && col <= 8
+            processClick([row, col]);
+        end
+    end
+    
+    %=================================================================================
+    % PROCESS CLICK
+    %=================================================================================
+    function processClick(pos)
+        if gameOver
+            return;
+        end
+        
+        row = pos(1);
+        col = pos(2);
+        
+        if isempty(selectedSquare)
+            % Select a piece if it belongs to current player
+            if ~isempty(board{row, col}) && strcmp(board{row,col}{1}, currentPlayer)
+                selectedSquare = [row, col];
+                drawBoard();
+            end
+        else
+            fromRow = selectedSquare(1);
+            fromCol = selectedSquare(2);
+            
+            % If clicking on own piece, re-select
+            if ~isempty(board{row, col}) && strcmp(board{row,col}{1}, currentPlayer)
+                selectedSquare = [row, col];
+                drawBoard();
+                return;
+            end
+            
+            % Attempt move with full validation (including check)
+            if isValidMoveFull(board, fromRow, fromCol, row, col, currentPlayer)
+                % Make the move
+                piece = board{fromRow, fromCol};
+                captured = board{row, col};
+                
+                board{row, col} = piece;
+                board{fromRow, fromCol} = {};
+                
+                % Store move in history
+                moveHistory{end+1} = {[fromRow, fromCol], [row, col], piece, captured};
+                
+                % Check for pawn promotion
+                if strcmp(piece{2}, 'pawn') && (row == 1 || row == 8)
+                    promotePawn(row, col);
+                end
+                
+                % Switch player
+                if strcmp(currentPlayer, 'white')
+                    currentPlayer = 'black';
+                else
+                    currentPlayer = 'white';
+                end
+                
+                selectedSquare = [];
+                
+                % Check game state
+                checkGameState();
+                drawBoard();
+            else
+                % Invalid move
+                selectedSquare = [];
+                drawBoard();
+            end
+        end
+    end
+    
+    %=================================================================================
+    % PAWN PROMOTION
+    %=================================================================================
+    function promotePawn(row, col)
+        dlg = figure('Name','Promotion','NumberTitle','off','Position',[400 300 300 200],...
+                     'MenuBar','none','ToolBar','none','Color',[0.2 0.2 0.2]);
+        
+        color = board{row,col}{1};
+        
+        pieces = {'queen','rook','bishop','knight'};
+        symbols = {'♕','♖','♗','♘'};
+        if strcmp(color, 'black')
+            symbols = {'♛','♜','♝','♞'};
+        end
+        
+        for i = 1:4
+            uicontrol('Style','pushbutton','String',symbols{i},...
+                      'Position',[30 + (i-1)*60, 50, 50, 50],...
+                      'FontSize',24,'FontWeight','bold',...
+                      'Callback',{@promoteCallback, row, col, color, pieces{i}, dlg});
+        end
+        
+        function promoteCallback(~, ~, row, col, color, pieceType, dlg)
+            board{row,col} = {color, pieceType};
+            delete(dlg);
+            drawBoard();
+        end
+    end
+    
+    %=================================================================================
+    % NEW GAME
+    %=================================================================================
+    function newGame(~, ~)
+        board = initializeBoard();
+        selectedSquare = [];
+        currentPlayer = 'white';
+        gameOver = false;
+        moveHistory = {};
+        inCheck = false;
+        drawBoard();
+    end
+    
+    %=================================================================================
+    % UNDO MOVE
+    %=================================================================================
+    function undoMove(~, ~)
+        if isempty(moveHistory)
+            return;
+        end
+        
+        lastMove = moveHistory{end};
+        fromPos = lastMove{1};
+        toPos = lastMove{2};
+        piece = lastMove{3};
+        captured = lastMove{4};
+        
+        board{fromPos(1), fromPos(2)} = piece;
+        board{toPos(1), toPos(2)} = captured;
+        
+        moveHistory(end) = [];
+        
+        if strcmp(currentPlayer, 'white')
+            currentPlayer = 'black';
+        else
+            currentPlayer = 'white';
+        end
+        
+        gameOver = false;
+        inCheck = false;
+        drawBoard();
+    end
+end
